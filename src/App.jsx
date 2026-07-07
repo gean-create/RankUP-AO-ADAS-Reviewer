@@ -100,7 +100,7 @@ async function saveState(state) {
    (see setup steps in chat). Leave the placeholder to keep
    using email/password only.
    ============================================================ */
-const GOOGLE_CLIENT_ID = "REPLACE_WITH_YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com";
+const GOOGLE_CLIENT_ID = "451664885211-73rqq8ksl6f4opl8kg2a3vsrnvunhv71.apps.googleusercontent.com";
 const GOOGLE_SIGNIN_CONFIGURED = !GOOGLE_CLIENT_ID.startsWith("REPLACE_WITH_YOUR");
 
 function decodeGoogleJWT(credential) {
