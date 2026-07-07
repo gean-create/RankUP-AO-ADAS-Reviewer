@@ -4220,7 +4220,31 @@ function RankUpStyles() {
       .progress-track{ height:8px; border-radius:6px; background:var(--track); overflow:hidden; margin-bottom:16px; }
       .progress-fill{ height:100%; background:linear-gradient(90deg,var(--gold),var(--blue)); border-radius:6px; transition:width .4s ease; }
 
-      .primary-btn{ display:inline-flex; align-items:center; justify-content:center; gap:7px; background:linear-gradient(135deg,var(--gold),#B4842A); color:#241a04; border:none; border-radius:12px; padding:11px 16px; font-weight:700; font-size:13.5px; cursor:pointer; }
+     .primary-btn{
+    width:100%;
+    border:none;
+    border-radius:16px;
+    padding:16px;
+    font-size:18px;
+    font-weight:700;
+    cursor:pointer;
+
+    background:linear-gradient(
+        90deg,
+        #58d7c6,
+        #9ad39c,
+        #f4d16f
+    );
+
+    color:#0d2237;
+
+    transition:.25s;
+}
+
+.primary-btn:hover{
+    transform:translateY(-2px);
+    box-shadow:0 12px 25px rgba(0,0,0,.25);
+}
       .primary-btn:disabled{ opacity:.5; cursor:not-allowed; }
       .primary-btn.full{ width:100%; margin:6px 0 4px; }
       .ghost-btn{ display:inline-flex; align-items:center; gap:6px; background:var(--card); border:1px solid var(--border); color:var(--ink-0); border-radius:10px; padding:7px 11px; font-size:12px; font-weight:600; cursor:pointer; }
@@ -4345,7 +4369,13 @@ function RankUpStyles() {
       .nav-btn{ flex:1; display:flex; flex-direction:column; align-items:center; gap:3px; background:none; border:none; color:var(--ink-3); font-size:9.5px; font-weight:600; padding:6px 2px; cursor:pointer; border-radius:10px; }
       .nav-btn.active{ color:var(--gold); }
 
-      .auth-screen{ display:flex; flex-direction:column; justify-content:center; height:100%; padding:28px 26px; }
+      .auth-screen{
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    height:100%;
+    padding:42px 34px;
+}
       .auth-brand{
     display:flex;
     flex-direction:column;
@@ -4354,30 +4384,51 @@ function RankUpStyles() {
     text-align:center;
     margin-bottom:24px;}
       .auth-mark{
-    width:90px;
-    height:90px;
+    width:120px;
+    height:120px;
     display:flex;
     justify-content:center;
     align-items:center;
-    margin-bottom:12px;}
+    margin-bottom:18px;
+}
       .auth-mark img{ width:100%; height:auto; object-fit:contain; }
       .auth-mark img{ width:100%; height:100%; object-fit:contain; filter:drop-shadow(0 3px 8px rgba(0,0,0,0.35)); }
       .auth-t1{
-    font-size:42px;
+    font-family:'Fraunces',serif;
+    font-size:52px;
     font-weight:700;
     color:#fff;
-    margin-top:8px;}
-      .auth-t2{
-    margin-top:6px;
-    letter-spacing:3px;
-    color:#94a3b8;
-    font-size:14px;
-    text-transform:uppercase;}
-      .auth-tabs{ display:flex; background:var(--track); border-radius:12px; padding:4px; margin-bottom:20px; }
+    margin:8px 0 2px;
+}
+     .auth-t2{
+    color:#b8c6d8;
+    font-size:13px;
+    letter-spacing:5px;
+    text-transform:uppercase;
+    margin-top:2px;
+}
+      .auth-tabs{
+    display:flex;
+    background:#445160;
+    border-radius:18px;
+    padding:5px;
+    margin:12px 0 24px;
+}
       .auth-tab{ flex:1; background:none; border:none; padding:9px; border-radius:9px; font-weight:700; font-size:13px; color:var(--ink-2); cursor:pointer; }
-      .auth-tab.active{ background:linear-gradient(135deg,var(--gold),#B4842A); color:#241a04; }
+      .auth-tab.active{
+    background:linear-gradient(90deg,#64d5c8,#8bc6b2);
+    color:white;
+}
       .auth-form{ display:flex; flex-direction:column; gap:11px; }
-      .input-with-icon{ display:flex; align-items:center; gap:9px; background:var(--card-hi); border:1px solid var(--border); border-radius:11px; padding:11px 12px; color:var(--ink-2); }
+     .input-with-icon{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    background:#3d4857;
+    border:1px solid rgba(255,255,255,.06);
+    border-radius:16px;
+    padding:16px;
+}
       .input-with-icon input{ flex:1; background:none; border:none; color:var(--ink-0); font-size:13.5px; outline:none; }
       .pw-toggle{ background:none; border:none; color:var(--ink-2); cursor:pointer; }
       .auth-divider{ display:flex; align-items:center; margin:18px 0; color:var(--ink-3); font-size:11px; }
