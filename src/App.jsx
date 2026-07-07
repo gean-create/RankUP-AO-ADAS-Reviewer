@@ -3841,19 +3841,18 @@ function AuthScreen({ onAuth, onPreview }) {
   };
 
   return (
-    <div className="screen auth-screen">
+  <div className="screen auth-screen">
+
+    <div className="glass-card">
+
       <div className="auth-brand">
-        <div className="auth-mark"><img src={LOGO_DATA_URI} alt="RankUp logo" /></div>
-        <div className="auth-brand-text">
-          <div className="auth-t1">RankUp</div>
-          <div className="auth-t2">AO &amp; ADAS Reviewer</div>
-        </div>
-      </div>
 
       <div className="auth-tabs">
         <button className={mode === "signin" ? "auth-tab active" : "auth-tab"} onClick={() => setMode("signin")}>Sign In</button>
         <button className={mode === "signup" ? "auth-tab active" : "auth-tab"} onClick={() => setMode("signup")}>Sign Up</button>
       </div>
+    </div>
+  </div>    
 
       <form onSubmit={submit} className="auth-form">
         {mode === "signup" && (
@@ -3890,10 +3889,11 @@ function AuthScreen({ onAuth, onPreview }) {
         <button className="google-btn" disabled title="Add your Google Client ID in the code to enable this">
           <GoogleG /> Continue with Google (not configured)
         </button>
-      )}
-
+      )} 
+     
       <button className="link-btn preview-link" onClick={onPreview}>Preview the reviewer first, no account needed →</button>
       <p className="auth-note">
+        
         {GOOGLE_SIGNIN_CONFIGURED
           ? "Google Sign-In is live. Email/password below is stored on this device only (no server), so use Google for a real account."
           : "Google Sign-In needs a one-time setup — add your own Client ID at the top of the code (see the chat for the 3-step guide). Email/password below is stored on this device only, not a real server account."}
@@ -4242,8 +4242,11 @@ function RankUpStyles() {
 }
 
 .primary-btn:hover{
-    transform:translateY(-2px);
-    box-shadow:0 12px 25px rgba(0,0,0,.25);
+
+transform:translateY(-2px);
+
+box-shadow:0 12px 25px rgba(0,0,0,.22);
+
 }
       .primary-btn:disabled{ opacity:.5; cursor:not-allowed; }
       .primary-btn.full{ width:100%; margin:6px 0 4px; }
@@ -4368,13 +4371,43 @@ function RankUpStyles() {
       .bottom-nav{ display:flex; border-top:1px solid var(--border); background:var(--bg-1); padding:8px 4px calc(8px + env(safe-area-inset-bottom,0px)); position:sticky; bottom:0; z-index:100; backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); }
       .nav-btn{ flex:1; display:flex; flex-direction:column; align-items:center; gap:3px; background:none; border:none; color:var(--ink-3); font-size:9.5px; font-weight:600; padding:6px 2px; cursor:pointer; border-radius:10px; }
       .nav-btn.active{ color:var(--gold); }
+.glass-card{
 
-      .auth-screen{
-    display:flex;
-    flex-direction:column;
-    justify-content:center;
-    height:100%;
-    padding:42px 34px;
+    width:100%;
+
+    max-width:470px;
+
+    margin:auto;
+
+    padding:42px;
+
+    border-radius:32px;
+
+    background:rgba(39,49,61,.78);
+
+    backdrop-filter:blur(24px);
+
+    -webkit-backdrop-filter:blur(24px);
+
+    border:1px solid rgba(255,255,255,.08);
+
+    box-shadow:
+        0 25px 80px rgba(0,0,0,.40),
+        inset 0 1px rgba(255,255,255,.05);
+
+}
+     .auth-screen{
+
+display:flex;
+
+justify-content:center;
+
+align-items:center;
+
+min-height:100vh;
+
+padding:40px;
+
 }
       .auth-brand{
     display:flex;
@@ -4391,7 +4424,19 @@ function RankUpStyles() {
     align-items:center;
     margin-bottom:18px;
 }
-      .auth-mark img{ width:100%; height:auto; object-fit:contain; }
+      .auth-mark img{
+
+width:100%;
+
+height:auto;
+
+object-fit:contain;
+
+filter:drop-shadow(0 12px 20px rgba(0,0,0,.35));
+
+animation:logoPop .8s ease;
+
+}
       .auth-mark img{ width:100%; height:100%; object-fit:contain; filter:drop-shadow(0 3px 8px rgba(0,0,0,0.35)); }
       .auth-t1{
     font-family:'Fraunces',serif;
@@ -4399,6 +4444,33 @@ function RankUpStyles() {
     font-weight:700;
     color:#fff;
     margin:8px 0 2px;
+}
+    @keyframes logoPop{
+
+0%{
+
+opacity:0;
+
+transform:scale(.6);
+
+}
+
+70%{
+
+opacity:1;
+
+transform:scale(1.1);
+
+}
+
+100%{
+
+opacity:1;
+
+transform:scale(1);
+
+}
+
 }
      .auth-t2{
     color:#b8c6d8;
@@ -4434,7 +4506,33 @@ function RankUpStyles() {
       .auth-divider{ display:flex; align-items:center; margin:18px 0; color:var(--ink-3); font-size:11px; }
       .auth-divider::before, .auth-divider::after{ content:""; flex:1; height:1px; background:var(--border); }
       .auth-divider span{ padding:0 10px; }
-      .google-btn{ display:flex; align-items:center; justify-content:center; gap:9px; width:100%; background:var(--card-hi); border:1px solid var(--border); border-radius:11px; padding:11px; font-weight:700; font-size:13px; color:var(--ink-0); cursor:pointer; }
+      .google-btn{
+
+display:flex;
+
+align-items:center;
+
+justify-content:center;
+
+width:100%;
+
+height:56px;
+
+border-radius:15px;
+
+background:white;
+
+border:none;
+
+font-weight:700;
+
+font-size:15px;
+
+cursor:pointer;
+
+transition:.2s;
+
+}
       .google-btn:disabled{ opacity:.55; cursor:not-allowed; }
       .google-btn-slot{ display:flex; justify-content:center; width:100%; min-height:44px; }
       .google-btn-slot > div{ width:100% !important; }
@@ -4443,7 +4541,41 @@ function RankUpStyles() {
 
       .preview-link{ display:block; text-align:center; width:100%; margin-top:16px; font-size:12px; }
       .ov-topbar{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px; }
-      .ov-topbar .primary-btn{ padding:8px 14px; font-size:12px; flex-shrink:0; }
+      .ov-topbar .primary-btn{
+
+width:100%;
+
+padding:16px;
+
+border:none;
+
+border-radius:15px;
+
+font-size:17px;
+
+font-weight:700;
+
+cursor:pointer;
+
+background:
+
+linear-gradient(
+
+90deg,
+
+#62d6ca,
+
+#82d0b7,
+
+#d9d48a
+
+);
+
+color:#18304c;
+
+transition:.25s;
+
+}
       .ov-tabbar{ margin-bottom:14px; }
       .ov-headline{ font-family:'Fraunces',serif; font-weight:600; font-size:18px; line-height:1.3; margin:10px 0 8px; }
       .role-pill{ display:inline-block; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--gold-soft); background:var(--track); padding:5px 10px; border-radius:20px; }
