@@ -3842,62 +3842,72 @@ function AuthScreen({ onAuth, onPreview }) {
 
   return (
     <div className="screen auth-screen">
-      <div className="auth-brand">
-        <div className="auth-mark"><img src={LOGO_DATA_URI} alt="RankUp logo" /></div>
-        <div className="auth-brand-text">
+      <div className="auth-card">
+        <div className="auth-brand">
+          <div className="auth-mark"><img src={LOGO_DATA_URI} alt="RankUp logo" /></div>
           <div className="auth-t1">RankUp</div>
           <div className="auth-t2">AO &amp; ADAS Reviewer</div>
         </div>
-      </div>
 
-      <div className="auth-tabs">
-        <button className={mode === "signin" ? "auth-tab active" : "auth-tab"} onClick={() => setMode("signin")}>Sign In</button>
-        <button className={mode === "signup" ? "auth-tab active" : "auth-tab"} onClick={() => setMode("signup")}>Sign Up</button>
-      </div>
-
-      <form onSubmit={submit} className="auth-form">
-        {mode === "signup" && (
-          <div className="input-with-icon">
-            <UserIcon size={15} />
-            <input placeholder="Full Name" value={name} onChange={(e) => setName(e.target.value)} />
-          </div>
-        )}
-        <div className="input-with-icon">
-          <Mail size={15} />
-          <input type="email" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <div className="auth-tabs">
+          <button className={mode === "signin" ? "auth-tab active" : "auth-tab"} onClick={() => setMode("signin")}>Sign In</button>
+          <button className={mode === "signup" ? "auth-tab active" : "auth-tab"} onClick={() => setMode("signup")}>Sign Up</button>
         </div>
-        <div className="input-with-icon">
-          <Lock size={15} />
-          <input type={showPw ? "text" : "password"} placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
-          <button type="button" className="pw-toggle" onClick={() => setShowPw((s) => !s)}>{showPw ? <EyeOff size={15} /> : <Eye size={15} />}</button>
-        </div>
-        {error && <div className="error-line"><AlertCircle size={13} /> {error}</div>}
-        <button type="submit" className="primary-btn full">{mode === "signin" ? "Sign In" : "Create Account"}</button>
-      </form>
 
-      <div className="auth-divider"><span>or</span></div>
-
-      {GOOGLE_SIGNIN_CONFIGURED ? (
-        <>
-          <div ref={googleBtnRef} className="google-btn-slot" />
-          {!googleReady && (
-            <button className="google-btn" disabled>
-              <Loader2 size={14} className="spin" /> Loading Google Sign-In…
+        <div className="auth-google-slot">
+          {GOOGLE_SIGNIN_CONFIGURED ? (
+            <>
+              <div ref={googleBtnRef} className="google-btn-slot" />
+              {!googleReady && (
+                <button className="google-btn" disabled>
+                  <Loader2 size={14} className="spin" /> Loading Google Sign-In…
+                </button>
+              )}
+            </>
+          ) : (
+            <button className="google-btn" disabled title="Add your Google Client ID in the code to enable this">
+              <GoogleG /> Continue with Google
             </button>
           )}
-        </>
-      ) : (
-        <button className="google-btn" disabled title="Add your Google Client ID in the code to enable this">
-          <GoogleG /> Continue with Google (not configured)
-        </button>
-      )}
+        </div>
+
+        <div className="auth-divider"><span>or use your email</span></div>
+
+        <form onSubmit={submit} className="auth-form">
+          {mode === "signup" && (
+            <label className="auth-field">Full name
+              <input placeholder="Juan Dela Cruz" value={name} onChange={(e) => setName(e.target.value)} />
+            </label>
+          )}
+          <label className="auth-field">Email address
+            <input type="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+          </label>
+          <label className="auth-field">Password
+            <div className="input-with-icon">
+              <input type={showPw ? "text" : "password"} placeholder="Your password" value={password} onChange={(e) => setPassword(e.target.value)} />
+              <button type="button" className="pw-toggle" onClick={() => setShowPw((s) => !s)}>{showPw ? <EyeOff size={15} /> : <Eye size={15} />}</button>
+            </div>
+          </label>
+          {error && <div className="error-line"><AlertCircle size={13} /> {error}</div>}
+          <button type="submit" className="primary-btn full">{mode === "signin" ? "Sign In" : "Create Account"}</button>
+        </form>
+
+        <div className="auth-switch">
+          {mode === "signin" ? (
+            <>New here? <button type="button" className="link-btn" onClick={() => setMode("signup")}>Create an account</button></>
+          ) : (
+            <>Already have an account? <button type="button" className="link-btn" onClick={() => setMode("signin")}>Sign in</button></>
+          )}
+        </div>
+
+        <p className="auth-note">
+          {GOOGLE_SIGNIN_CONFIGURED
+            ? "Google Sign-In is live. Email/password below is stored on this device only (no server), so use Google for a real account."
+            : "Google Sign-In needs a one-time setup — add your own Client ID at the top of the code (see the chat for the 3-step guide). Email/password below is stored on this device only, not a real server account."}
+        </p>
+      </div>
 
       <button className="link-btn preview-link" onClick={onPreview}>Preview the reviewer first, no account needed →</button>
-      <p className="auth-note">
-        {GOOGLE_SIGNIN_CONFIGURED
-          ? "Google Sign-In is live. Email/password below is stored on this device only (no server), so use Google for a real account."
-          : "Google Sign-In needs a one-time setup — add your own Client ID at the top of the code (see the chat for the 3-step guide). Email/password below is stored on this device only, not a real server account."}
-      </p>
     </div>
   );
 }
@@ -4174,6 +4184,7 @@ function RankUpStyles() {
         --card:rgba(255,255,255,0.045); --card-hi:rgba(255,255,255,0.08); --border:rgba(255,255,255,0.10);
         --ink-0:#F2F5FA; --ink-1:#C6D0E0; --ink-2:#8B96AC; --ink-3:#5B6780;
         --gold:#D9AE55; --gold-soft:#EAC97E; --blue:#3E7BFA; --blue-soft:#7FA4FF;
+        --teal:#4FD1C5; --teal-soft:#8FE9E0;
         --good:#4FD18B; --warn:#F2836B; --track:rgba(255,255,255,0.10);
         font-family:'Inter',system-ui,sans-serif; min-height:100vh; width:100%;
         background:linear-gradient(180deg, var(--bg-0), var(--bg-1) 55%, var(--bg-2));
@@ -4184,6 +4195,7 @@ function RankUpStyles() {
         --card:rgba(20,35,60,0.04); --card-hi:rgba(20,35,60,0.07); --border:rgba(20,35,60,0.10);
         --ink-0:#101A2C; --ink-1:#3B4A64; --ink-2:#66748C; --ink-3:#9AA6BA;
         --gold:#B4842A; --gold-soft:#8E6A21; --blue:#2354D6; --blue-soft:#1E46B0;
+        --teal:#1F8F86; --teal-soft:#177A72;
         --good:#2E9F68; --warn:#C85A42; --track:rgba(20,35,60,0.08);
       }
       .app-wrap *{ box-sizing:border-box; }
@@ -4370,78 +4382,65 @@ function RankUpStyles() {
       .nav-btn.active{ color:var(--gold); }
 
       .auth-screen{
-    display:flex;
-    flex-direction:column;
-    justify-content:center;
-    height:100%;
-    padding:42px 34px;
-}
+        display:flex; flex-direction:column; align-items:center; justify-content:center;
+        min-height:100%; padding:32px 16px;
+      }
+      .auth-card{
+        width:100%; max-width:400px; margin:0 auto;
+        background:var(--card-hi); border:1px solid var(--border); border-radius:22px;
+        padding:34px 30px 26px; box-shadow:0 24px 60px -20px rgba(0,0,0,0.55);
+        -webkit-backdrop-filter:blur(18px); backdrop-filter:blur(18px);
+      }
       .auth-brand{
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    justify-content:center;
-    text-align:center;
-    margin-bottom:24px;}
-      .auth-mark{
-    width:120px;
-    height:120px;
-    display:flex;
-    justify-content:center;
-    align-items:center;
-    margin-bottom:18px;
-}
-      .auth-mark img{ width:100%; height:auto; object-fit:contain; }
-      .auth-mark img{ width:100%; height:100%; object-fit:contain; filter:drop-shadow(0 3px 8px rgba(0,0,0,0.35)); }
-      .auth-t1{
-    font-family:'Fraunces',serif;
-    font-size:52px;
-    font-weight:700;
-    color:#fff;
-    margin:8px 0 2px;
-}
-     .auth-t2{
-    color:#b8c6d8;
-    font-size:13px;
-    letter-spacing:5px;
-    text-transform:uppercase;
-    margin-top:2px;
-}
-      .auth-tabs{
-    display:flex;
-    background:#445160;
-    border-radius:18px;
-    padding:5px;
-    margin:12px 0 24px;
-}
-      .auth-tab{ flex:1; background:none; border:none; padding:9px; border-radius:9px; font-weight:700; font-size:13px; color:var(--ink-2); cursor:pointer; }
-      .auth-tab.active{
-    background:linear-gradient(90deg,#64d5c8,#8bc6b2);
-    color:white;
-}
-      .auth-form{ display:flex; flex-direction:column; gap:11px; }
-     .input-with-icon{
-    display:flex;
-    align-items:center;
-    gap:12px;
-    background:#3d4857;
-    border:1px solid rgba(255,255,255,.06);
-    border-radius:16px;
-    padding:16px;
-}
-      .input-with-icon input{ flex:1; background:none; border:none; color:var(--ink-0); font-size:13.5px; outline:none; }
-      .pw-toggle{ background:none; border:none; color:var(--ink-2); cursor:pointer; }
-      .auth-divider{ display:flex; align-items:center; margin:18px 0; color:var(--ink-3); font-size:11px; }
-      .auth-divider::before, .auth-divider::after{ content:""; flex:1; height:1px; background:var(--border); }
-      .auth-divider span{ padding:0 10px; }
-      .google-btn{ display:flex; align-items:center; justify-content:center; gap:9px; width:100%; background:var(--card-hi); border:1px solid var(--border); border-radius:11px; padding:11px; font-weight:700; font-size:13px; color:var(--ink-0); cursor:pointer; }
-      .google-btn:disabled{ opacity:.55; cursor:not-allowed; }
-      .google-btn-slot{ display:flex; justify-content:center; width:100%; min-height:44px; }
+        display:flex; flex-direction:column; align-items:center; justify-content:center;
+        text-align:center; margin-bottom:22px;
+      }
+      .auth-mark{ width:64px; height:64px; display:flex; justify-content:center; align-items:center; margin-bottom:10px; }
+      .auth-mark img{ width:100%; height:100%; object-fit:contain; filter:drop-shadow(0 8px 20px rgba(217,174,85,0.3)); }
+      .auth-t1{ font-family:'Fraunces',serif; font-size:22px; font-weight:600; color:var(--ink-0); margin:0; }
+      .auth-t2{ font-size:10px; letter-spacing:2px; text-transform:uppercase; color:var(--ink-2); margin-top:3px; }
+
+      .auth-tabs{ display:flex; gap:4px; padding:4px; border-radius:13px; background:var(--card); border:1px solid var(--border); margin-bottom:18px; }
+      .auth-tab{ flex:1; padding:9px 0; border-radius:10px; border:none; background:none; color:var(--ink-2); font-family:inherit; font-size:12.5px; font-weight:700; letter-spacing:.2px; cursor:pointer; transition:background .2s ease,color .2s ease; }
+      .auth-tab.active{ background:linear-gradient(90deg, rgba(217,174,85,0.20), rgba(79,209,197,0.16)); color:var(--ink-0); }
+
+      .auth-google-slot{ margin-bottom:14px; }
+      .google-btn{ display:flex; align-items:center; justify-content:center; gap:10px; width:100%; background:#fff; border:1px solid #dadce0; border-radius:11px; padding:11px 16px; font-family:inherit; font-weight:600; font-size:13px; color:#3c4043; cursor:pointer; transition:box-shadow .2s ease, background .2s ease; }
+      .google-btn:hover{ background:#f8f8f8; box-shadow:0 1px 6px rgba(0,0,0,0.2); }
+      .google-btn:disabled{ opacity:.6; cursor:not-allowed; }
+      .google-btn-slot{ display:flex; justify-content:center; width:100%; min-height:44px; margin-bottom:14px; }
       .google-btn-slot > div{ width:100% !important; }
       .google-btn-slot iframe{ margin:0 auto; }
-      .auth-note{ font-size:10.5px; color:var(--ink-3); text-align:center; margin-top:14px; line-height:1.5; }
 
-      .preview-link{ display:block; text-align:center; width:100%; margin-top:16px; font-size:12px; }
+      .auth-divider{ display:flex; align-items:center; gap:10px; margin:14px 0; font-size:10.5px; color:var(--ink-3); text-transform:uppercase; letter-spacing:.5px; }
+      .auth-divider::before, .auth-divider::after{ content:""; flex:1; height:1px; background:var(--border); }
+
+      .auth-form{ display:flex; flex-direction:column; gap:13px; }
+      .auth-field{ display:flex; flex-direction:column; gap:6px; font-size:11.5px; font-weight:600; color:var(--ink-2); }
+      .auth-field > input{
+        padding:11px 14px; border-radius:11px; border:1px solid var(--border); background:var(--card);
+        color:var(--ink-0); font-size:13px; font-family:inherit; outline:none; transition:border-color .2s ease;
+      }
+      .auth-field > input:focus{ border-color:var(--teal); }
+      .auth-field > input::placeholder{ color:var(--ink-3); }
+      .input-with-icon{
+        display:flex; align-items:center; gap:8px;
+        padding:11px 14px; border-radius:11px; border:1px solid var(--border); background:var(--card);
+        transition:border-color .2s ease;
+      }
+      .input-with-icon:focus-within{ border-color:var(--teal); }
+      .input-with-icon input{ flex:1; background:none; border:none; color:var(--ink-0); font-size:13px; font-family:inherit; outline:none; }
+      .input-with-icon input::placeholder{ color:var(--ink-3); }
+      .pw-toggle{ background:none; border:none; color:var(--ink-2); cursor:pointer; display:flex; align-items:center; }
+
+      .auth-form .primary-btn.full{ font-size:14px; padding:12px; border-radius:11px; }
+
+      .auth-switch{ margin-top:16px; text-align:center; font-size:11.5px; color:var(--ink-2); }
+      .auth-switch .link-btn{ color:var(--teal-soft); font-weight:700; text-decoration:underline dotted; text-underline-offset:2px; }
+
+      .auth-note{ font-size:10px; color:var(--ink-3); text-align:center; margin-top:18px; line-height:1.6; }
+
+      .preview-link{ display:block; text-align:center; width:100%; max-width:400px; margin:16px auto 0; font-size:12px; }
       .ov-topbar{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px; }
       .ov-topbar .primary-btn{ padding:8px 14px; font-size:12px; flex-shrink:0; }
       .ov-tabbar{ margin-bottom:14px; }
