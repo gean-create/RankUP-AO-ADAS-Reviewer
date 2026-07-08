@@ -3936,6 +3936,8 @@ const NAV_ITEMS = [
 
 export default function App() {
   const [loaded, setLoaded] = useState(false);
+  const [showSplash, setShowSplash] = useState(true);
+  const [splashHiding, setSplashHiding] = useState(false);
   const [state, setState] = useState(defaultState);
   const [theme, setTheme] = useState("dark");
   const [tab, setTab] = useState("dashboard");
@@ -3954,6 +3956,18 @@ export default function App() {
       setLoaded(true);
     })();
   }, []);
+
+  // Keep the branded splash on screen long enough to actually be seen (state
+  // usually loads almost instantly), then fade it out before revealing the
+  // sign-in / app screens underneath.
+  useEffect(() => {
+    if (!loaded) return;
+    const minTimer = setTimeout(() => {
+      setSplashHiding(true);
+      setTimeout(() => setShowSplash(false), 600);
+    }, 1300);
+    return () => clearTimeout(minTimer);
+  }, [loaded]);
 
   useEffect(() => {
     if (!loaded) return;
@@ -4076,12 +4090,18 @@ export default function App() {
 
   const goTab = (id) => { setTab(id); setKraId(null); setTopicId(null); setReviewerSubtab("kra"); };
 
-  if (!loaded) {
+  if (showSplash) {
     return (
       <div className="app-wrap" data-theme={theme}>
         <RankUpStyles />
-        <div className="app-screen loading-screen">
-          <Loader2 size={22} className="spin" />
+        <div className={"app-screen splash-screen" + (splashHiding ? " splash-hide" : "")}>
+          <div className="splash-logo-wrap">
+            <img className="splash-logo" src={LOGO_DATA_URI} alt="RankUp logo" />
+            <div className="splash-shine" />
+          </div>
+          <div className="splash-title">RankUp</div>
+          <div className="splash-sub">AO &amp; ADAS Reviewer</div>
+          <div className="splash-loader"><div className="splash-loader-bar" /></div>
         </div>
       </div>
     );
@@ -4205,6 +4225,28 @@ function RankUpStyles() {
       }
       .app-body{ flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding-bottom:env(safe-area-inset-bottom,0px); }
       .loading-screen{ display:flex; align-items:center; justify-content:center; height:100vh; color:var(--gold); }
+
+      .splash-screen{
+        display:flex; flex-direction:column; align-items:center; justify-content:center;
+        min-height:100vh; text-align:center; transition:opacity .55s ease;
+      }
+      .splash-screen.splash-hide{ opacity:0; }
+      .splash-logo-wrap{ position:relative; width:120px; height:120px; display:flex; align-items:center; justify-content:center; animation:logoPopIn .9s cubic-bezier(.22,1.45,.4,1) both; }
+      .splash-logo{ position:relative; z-index:2; width:100%; height:100%; object-fit:contain; filter:drop-shadow(0 12px 28px rgba(217,174,85,0.35)); }
+      .splash-shine{ position:absolute; inset:4px; z-index:3; border-radius:50%; overflow:hidden; pointer-events:none; }
+      .splash-shine::after{ content:""; position:absolute; top:-60%; left:-160%; width:55%; height:220%; background:linear-gradient(75deg, transparent, rgba(255,255,255,0.55), transparent); animation:shineSweep 2.6s ease-in-out .9s infinite; }
+      @keyframes shineSweep{ 0%{ left:-160%; } 42%{ left:170%; } 100%{ left:170%; } }
+      @keyframes logoPopIn{ 0%{ opacity:0; transform:scale(.32) rotate(-16deg); } 55%{ opacity:1; transform:scale(1.1) rotate(4deg); } 75%{ transform:scale(.97) rotate(-1deg); } 100%{ opacity:1; transform:scale(1) rotate(0); } }
+      .splash-title{
+        margin-top:20px; font-family:'Fraunces',serif; font-size:28px; font-weight:600; letter-spacing:.3px;
+        background:linear-gradient(90deg, var(--gold-soft), var(--teal-soft)); -webkit-background-clip:text; background-clip:text; color:transparent;
+        opacity:0; animation:splashFadeUp .7s ease .5s forwards;
+      }
+      .splash-sub{ margin-top:6px; font-size:11px; letter-spacing:2.5px; text-transform:uppercase; color:var(--ink-2); opacity:0; animation:splashFadeUp .7s ease .68s forwards; }
+      @keyframes splashFadeUp{ from{ opacity:0; transform:translateY(10px); } to{ opacity:1; transform:translateY(0); } }
+      .splash-loader{ width:130px; height:3px; border-radius:3px; background:var(--track); margin-top:26px; overflow:hidden; opacity:0; animation:splashFadeUp .6s ease .85s forwards; }
+      .splash-loader-bar{ height:100%; width:36%; border-radius:3px; background:linear-gradient(90deg, var(--teal), var(--gold)); animation:loaderSlide 1.1s ease-in-out infinite; }
+      @keyframes loaderSlide{ 0%{ transform:translateX(-120%); } 100%{ transform:translateX(370%); } }
       .spin{ animation:spin 1s linear infinite; }
       @keyframes spin{ to{ transform:rotate(360deg); } }
 
