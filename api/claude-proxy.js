@@ -43,6 +43,17 @@ export default async function handler(req, res) {
     });
 
     const data = await upstream.text();
+    if (!upstream.ok) {
+      // Anthropic returns errors as {"type":"error","error":{"type":"...","message":"..."}}.
+      // Normalize to a plain string so the client never has to unwrap nested shapes.
+      let message = "Anthropic API error (status " + upstream.status + ")";
+      try {
+        const parsed = JSON.parse(data);
+        if (parsed && parsed.error && parsed.error.message) message = parsed.error.message;
+      } catch (e) { /* not JSON — keep the status-only message */ }
+      res.status(upstream.status).json({ error: message });
+      return;
+    }
     res.status(upstream.status).setHeader("Content-Type", "application/json").send(data);
   } catch (err) {
     res.status(502).json({ error: "Could not reach the AI service: " + err.message });
