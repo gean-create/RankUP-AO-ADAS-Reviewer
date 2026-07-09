@@ -47,15 +47,29 @@ const localStorageShim = {
 };
 const storage = (typeof window !== "undefined" && window.storage) ? window.storage : localStorageShim;
 
-/* Claude API endpoint. Works as-is inside Claude.ai artifacts. If you deploy
-   this app standalone (Netlify, GitHub Pages, etc.), change this to your own
-   serverless proxy path (e.g. "/.netlify/functions/claude-proxy") — a public
-   site can't call api.anthropic.com directly with a secret key. See the
-   deployment guide in chat. */
-const CLAUDE_API_ENDPOINT = "https://api.anthropic.com/v1/messages";
+/* Claude API endpoint. Browsers can NEVER call api.anthropic.com directly —
+   there is no way to attach a secret API key to client-side code without
+   exposing it to every visitor, and Anthropic blocks that request anyway.
+   This is why "AI Feedback" / "Personalize" only work inside a Claude.ai
+   Artifact preview (which quietly proxies the call for you) and fail on any
+   other host, including this file once you download and deploy it.
+   The fix: route through a tiny serverless function that holds the real key
+   server-side. A ready-to-deploy Netlify version is included at
+   netlify/functions/claude-proxy.js — deploy this app to Netlify, set the
+   ANTHROPIC_API_KEY environment variable in the Netlify dashboard, and the
+   path below will start working with no other code changes. If you deploy
+   elsewhere (Vercel, your own Node server, etc.), write an equivalent
+   endpoint that accepts the same POST body and forwards it to
+   https://api.anthropic.com/v1/messages with your server-side key, then
+   update this path to match. */
+const CLAUDE_API_ENDPOINT = "/.netlify/functions/claude-proxy";
 
 const defaultState = {
-  auth: null, // { name, email }
+  auth: null, // { name, email, googleId?, picture? }  (no password here — see localAccounts)
+  localAccounts: {}, // { [emailLowercased]: { name, passwordHash } } — device-only credential store
+  settings: {
+    sharePresence: true, // if false, this device doesn't publish/see the "online now" heartbeat
+  },
   profile: {
     position: "AO II",
     photo: null,
@@ -71,6 +85,26 @@ const defaultState = {
   recentActivity: [],         // [{ id, label, detail, date }]
   practiceHistory: [],        // [{ id, question, answer, score, feedback, date, kind }]
 };
+
+/* Lightweight, dependency-free password hashing for this device-only account
+   store. Uses the browser's built-in SubtleCrypto (SHA-256) when available,
+   with a simple fallback so the app still works on older browsers. This is
+   NOT a substitute for a real server-side auth system — there is no server
+   here — but it means a plain password never sits in storage as-is. */
+async function hashPassword(password) {
+  const text = "rankup-salt-v1:" + password;
+  if (typeof window !== "undefined" && window.crypto && window.crypto.subtle) {
+    try {
+      const buf = await window.crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+      return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+    } catch (e) {
+      /* fall through to the simple fallback below */
+    }
+  }
+  let h = 0;
+  for (let i = 0; i < text.length; i++) { h = (Math.imul(31, h) + text.charCodeAt(i)) | 0; }
+  return "fb" + Math.abs(h).toString(16);
+}
 
 async function loadState() {
   try {
@@ -2863,6 +2897,7 @@ function TopicDetail({ kra, topic, onBack, onComplete, isComplete, position, pds
                 <div className="q-num">Situation {i + 1}</div>
                 <p className="q-text">{it.q}</p>
                 <RevealBlock label="Suggested Answers" items={it.suggested} />
+                <PracticeAnswer question={it.q} kind="situational" position={position} pdsInfo={pdsInfo} wesInfo={wesInfo} onLogHistory={logHistory} />
               </Card>
             ))}
           </>
@@ -3287,6 +3322,7 @@ function InterviewPractice({ position, pdsInfo, wesInfo, logHistory, embedded })
             <div className="q-num">Rapid {i + 1}</div>
             <p className="q-text">{it.q}</p>
             <RevealBlock label="Sample Answer" items={it.sample} />
+            <PracticeAnswer question={it.q} kind="interview" position={position} pdsInfo={pdsInfo} wesInfo={wesInfo} onLogHistory={logHistory} />
           </Card>
         ))}
       </div>
@@ -3732,8 +3768,33 @@ function Profile({ state, kraData, updateProfile, updateAuthName }) {
 /* ============================================================
    SETTINGS
    ============================================================ */
-function Settings({ theme, setTheme, onLogout, authEmail }) {
-  const [privacy, setPrivacy] = useState(true);
+function Settings({
+  theme, setTheme, onLogout, authEmail,
+  isGoogleLinked, sharePresence, onSetSharePresence,
+  onChangePassword, onSetLocalPassword, onUnlinkGoogle, hasLocalPassword,
+}) {
+  const [pwOpen, setPwOpen] = useState(false);
+  const [curPw, setCurPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [pwMsg, setPwMsg] = useState(null); // { ok, message }
+  const [pwBusy, setPwBusy] = useState(false);
+
+  const [googleOpen, setGoogleOpen] = useState(false);
+  const [confirmUnlink, setConfirmUnlink] = useState(false);
+
+  const closePwForm = () => { setPwOpen(false); setCurPw(""); setNewPw(""); setConfirmPw(""); setPwMsg(null); };
+
+  const submitPw = async () => {
+    if (newPw !== confirmPw) { setPwMsg({ ok: false, message: "New password and confirmation don't match." }); return; }
+    setPwBusy(true);
+    const result = hasLocalPassword
+      ? await onChangePassword(curPw, newPw)
+      : await onSetLocalPassword(newPw);
+    setPwBusy(false);
+    setPwMsg(result);
+    if (result.ok) { setCurPw(""); setNewPw(""); setConfirmPw(""); }
+  };
 
   return (
     <div className="screen">
@@ -3752,16 +3813,93 @@ function Settings({ theme, setTheme, onLogout, authEmail }) {
       <Card>
         <SectionLabel>Account</SectionLabel>
         <div className="settings-row"><span>Signed in as</span><span className="muted-line small">{authEmail}</span></div>
-        <div className="settings-row"><span>Change Password</span><button className="link-btn">Change</button></div>
-        <div className="settings-row"><span>Google Account Management</span><button className="link-btn">Manage</button></div>
+
+        <div className="settings-row">
+          <span>{hasLocalPassword ? "Change Password" : "Set a Password"}</span>
+          <button
+            className="link-btn"
+            onClick={() => { setPwOpen((o) => !o); setPwMsg(null); setGoogleOpen(false); }}
+          >
+            {pwOpen ? "Close" : (hasLocalPassword ? "Change" : "Set up")}
+          </button>
+        </div>
+        {pwOpen && (
+          <div className="inline-form">
+            {isGoogleLinked && !hasLocalPassword && (
+              <p className="muted-line small">You signed in with Google, so there's no password yet. Set one here as a backup way to sign in on this device.</p>
+            )}
+            {hasLocalPassword && (
+              <label className="auth-field">Current password
+                <input type="password" value={curPw} onChange={(e) => setCurPw(e.target.value)} />
+              </label>
+            )}
+            <label className="auth-field">New password
+              <input type="password" value={newPw} onChange={(e) => setNewPw(e.target.value)} />
+            </label>
+            <label className="auth-field">Confirm new password
+              <input type="password" value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} />
+            </label>
+            {pwMsg && (
+              <div className={pwMsg.ok ? "success-line" : "error-line"}>
+                {pwMsg.ok ? <CircleCheck size={13} /> : <AlertCircle size={13} />} {pwMsg.message}
+              </div>
+            )}
+            <div className="practice-actions">
+              <button className="primary-btn" onClick={submitPw} disabled={pwBusy || !newPw || !confirmPw || (hasLocalPassword && !curPw)}>
+                {pwBusy ? <Loader2 size={14} className="spin" /> : <Check size={14} />} Save
+              </button>
+              <button className="ghost-btn" onClick={closePwForm}>Cancel</button>
+            </div>
+            <p className="muted-line small" style={{ marginTop: 6 }}>
+              This password is stored only on this device (there's no server), so it won't follow you to a new phone or browser.
+            </p>
+          </div>
+        )}
+
+        <div className="settings-row">
+          <span>Google Account Management</span>
+          <button className="link-btn" onClick={() => { setGoogleOpen((o) => !o); setPwOpen(false); }}>
+            {googleOpen ? "Close" : "Manage"}
+          </button>
+        </div>
+        {googleOpen && (
+          <div className="inline-form">
+            {isGoogleLinked ? (
+              <>
+                <p className="muted-line small">Your account is linked to Google (<strong>{authEmail}</strong>). Sign-in uses Google, not a password stored here.</p>
+                {!confirmUnlink ? (
+                  <button className="ghost-btn full" onClick={() => setConfirmUnlink(true)}>Unlink Google account</button>
+                ) : (
+                  <>
+                    <p className="muted-line small">This turns your account into a device-only email/password account. You'll be asked to set a password next.</p>
+                    <div className="practice-actions">
+                      <button
+                        className="danger-btn"
+                        onClick={() => { onUnlinkGoogle(); setConfirmUnlink(false); setGoogleOpen(false); setPwOpen(true); setPwMsg(null); }}
+                      >
+                        Yes, unlink
+                      </button>
+                      <button className="ghost-btn" onClick={() => setConfirmUnlink(false)}>Cancel</button>
+                    </div>
+                  </>
+                )}
+              </>
+            ) : (
+              <p className="muted-line small">This account isn't linked to Google yet. Sign out, then choose "Continue with Google" on the sign-in screen using the same email to link it.</p>
+            )}
+          </div>
+        )}
       </Card>
 
       <Card>
         <SectionLabel>Preferences</SectionLabel>
         <div className="settings-row">
-          <span>Privacy Settings</span>
-          <button className={"toggle" + (privacy ? " on" : "")} onClick={() => setPrivacy((p) => !p)}><span className="toggle-knob" /></button>
+          <span>Share "Online Now" presence</span>
+          <button className={"toggle" + (sharePresence ? " on" : "")} onClick={() => onSetSharePresence(!sharePresence)}><span className="toggle-knob" /></button>
         </div>
+        <p className="muted-line small" style={{ marginTop: -6 }}>
+          When on, a random session id (no name or email) is briefly shared so other reviewers can see how many people are studying right now. Turn this off to browse without appearing in that count — nothing else about your account changes.
+        </p>
       </Card>
 
       <button className="danger-btn full" onClick={onLogout}><LogOut size={15} /> Log out</button>
@@ -3772,13 +3910,14 @@ function Settings({ theme, setTheme, onLogout, authEmail }) {
 /* ============================================================
    AUTH SCREENS
    ============================================================ */
-function AuthScreen({ onAuth, onPreview }) {
+function AuthScreen({ onAuth, onPreview, localAccounts, onRegisterAccount }) {
   const [mode, setMode] = useState("signin"); // signin | signup
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
   const [googleReady, setGoogleReady] = useState(false);
   const googleBtnRef = useRef(null);
 
@@ -3831,13 +3970,28 @@ function AuthScreen({ onAuth, onPreview }) {
     return () => { cancelled = true; };
   }, [handleGoogleCredential]);
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault();
     if (mode === "signup" && !name.trim()) return setError("Please enter your full name.");
     if (!email.trim() || !email.includes("@")) return setError("Please enter a valid email address.");
     if (password.length < 4) return setError("Password must be at least 4 characters.");
-    setError("");
-    onAuth({ name: mode === "signup" ? name.trim() : email.split("@")[0], email: email.trim() });
+    const key = email.trim().toLowerCase();
+    setError(""); setBusy(true);
+    try {
+      const hash = await hashPassword(password);
+      if (mode === "signup") {
+        if (localAccounts[key]) { setError("An account already exists for that email — sign in instead."); return; }
+        onRegisterAccount(key, { name: name.trim(), passwordHash: hash });
+        onAuth({ name: name.trim(), email: email.trim() });
+      } else {
+        const existing = localAccounts[key];
+        if (!existing) { setError("No account found for that email on this device — sign up first, or use Google."); return; }
+        if (existing.passwordHash !== hash) { setError("Incorrect password."); return; }
+        onAuth({ name: existing.name, email: email.trim() });
+      }
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -3889,7 +4043,10 @@ function AuthScreen({ onAuth, onPreview }) {
             </div>
           </label>
           {error && <div className="error-line"><AlertCircle size={13} /> {error}</div>}
-          <button type="submit" className="primary-btn full">{mode === "signin" ? "Sign In" : "Create Account"}</button>
+          <button type="submit" className="primary-btn full" disabled={busy}>
+            {busy ? <Loader2 size={14} className="spin" /> : null}
+            {mode === "signin" ? "Sign In" : "Create Account"}
+          </button>
         </form>
 
         <div className="auth-switch">
@@ -3981,6 +4138,7 @@ export default function App() {
   // many sessions have checked in within the last 90 seconds.
   useEffect(() => {
     if (!loaded || !state.auth) return;
+    if (state.settings?.sharePresence === false) { setOnlineCount(1); return; }
     if (!sessionIdRef.current) {
       sessionIdRef.current = "sess-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
     }
@@ -4015,7 +4173,7 @@ export default function App() {
     heartbeat();
     const interval = setInterval(heartbeat, 25000);
     return () => { cancelled = true; clearInterval(interval); };
-  }, [loaded, state.auth]);
+  }, [loaded, state.auth, state.settings?.sharePresence]);
 
   const pushActivity = useCallback((label, detail) => {
     setState((s) => ({
@@ -4026,6 +4184,47 @@ export default function App() {
 
   const handleAuth = (auth) => {
     setState((s) => ({ ...s, auth }));
+  };
+
+  const registerAccount = (emailKey, record) => {
+    setState((s) => ({ ...s, localAccounts: { ...s.localAccounts, [emailKey]: record } }));
+  };
+
+  // Change Password (Settings): only meaningful for device-local email/password
+  // accounts. Verifies the current password against the stored hash, then
+  // saves a new hash. Returns { ok, message } so the Settings UI can show a
+  // clear result instead of silently doing nothing.
+  const changePassword = async (currentPw, newPw) => {
+    const key = (state.auth?.email || "").toLowerCase();
+    const existing = state.localAccounts?.[key];
+    if (!existing) return { ok: false, message: "No local password is set for this account yet." };
+    if (newPw.length < 4) return { ok: false, message: "New password must be at least 4 characters." };
+    const currentHash = await hashPassword(currentPw);
+    if (currentHash !== existing.passwordHash) return { ok: false, message: "Current password is incorrect." };
+    const newHash = await hashPassword(newPw);
+    setState((s) => ({ ...s, localAccounts: { ...s.localAccounts, [key]: { ...existing, passwordHash: newHash } } }));
+    return { ok: true, message: "Password updated." };
+  };
+
+  // Set a first-time local password — used right after unlinking a Google
+  // account, since Google-linked accounts never had a local password.
+  const setLocalPassword = async (newPw) => {
+    const key = (state.auth?.email || "").toLowerCase();
+    if (newPw.length < 4) return { ok: false, message: "Password must be at least 4 characters." };
+    const newHash = await hashPassword(newPw);
+    setState((s) => ({
+      ...s,
+      localAccounts: { ...s.localAccounts, [key]: { name: s.auth?.name || "", passwordHash: newHash } },
+    }));
+    return { ok: true, message: "Password set." };
+  };
+
+  const unlinkGoogleAccount = () => {
+    setState((s) => (s.auth ? { ...s, auth: { name: s.auth.name, email: s.auth.email } } : s));
+  };
+
+  const setSharePresence = (on) => {
+    setState((s) => ({ ...s, settings: { ...s.settings, sharePresence: on } }));
   };
 
   const handleLogout = () => {
@@ -4090,6 +4289,49 @@ export default function App() {
 
   const goTab = (id) => { setTab(id); setKraId(null); setTopicId(null); setReviewerSubtab("kra"); };
 
+  // Back button / swipe-back fix: with no History API usage at all, the
+  // device/browser Back action had nowhere to go inside the app, so it left
+  // the page entirely and landed users back on the sign-in screen on
+  // re-entry. This tracks "where the user is" as a history entry so Back
+  // steps up one in-app screen at a time (topic -> KRA list -> Reviewer tab
+  // -> Dashboard) instead of exiting the app.
+  const navGuard = useRef(false);      // true while applying a Back/Forward-driven update
+  const navInitialized = useRef(false); // true once the first history entry has been recorded
+  const navSnapshot = state.auth
+    ? { authed: true, tab, kraId, topicId, reviewerSubtab }
+    : { authed: false, showOverview };
+
+  useEffect(() => {
+    if (!loaded || showSplash) return;
+    if (navGuard.current) { navGuard.current = false; return; }
+    if (!navInitialized.current) {
+      navInitialized.current = true;
+      window.history.replaceState(navSnapshot, "");
+      return;
+    }
+    window.history.pushState(navSnapshot, "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded, showSplash, tab, kraId, topicId, reviewerSubtab, showOverview, !!state.auth]);
+
+  useEffect(() => {
+    const onPopState = (e) => {
+      const nav = e.state;
+      if (!nav) return; // no in-app entry recorded here — let the browser do its normal thing
+      navGuard.current = true;
+      if (nav.authed) {
+        setShowOverview(false);
+        setTab(nav.tab || "dashboard");
+        setKraId(nav.kraId ?? null);
+        setTopicId(nav.topicId ?? null);
+        setReviewerSubtab(nav.reviewerSubtab || "kra");
+      } else {
+        setShowOverview(!!nav.showOverview);
+      }
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
   if (showSplash) {
     return (
       <div className="app-wrap" data-theme={theme}>
@@ -4121,7 +4363,12 @@ export default function App() {
               </div>
             </>
           ) : (
-            <AuthScreen onAuth={handleAuth} onPreview={() => setShowOverview(true)} />
+            <AuthScreen
+              onAuth={handleAuth}
+              onPreview={() => setShowOverview(true)}
+              localAccounts={state.localAccounts || {}}
+              onRegisterAccount={registerAccount}
+            />
           )
         ) : (
           <>
@@ -4170,7 +4417,19 @@ export default function App() {
               )}
 
               {tab === "settings" && (
-                <Settings theme={theme} setTheme={setTheme} onLogout={handleLogout} authEmail={state.auth.email} />
+                <Settings
+                  theme={theme}
+                  setTheme={setTheme}
+                  onLogout={handleLogout}
+                  authEmail={state.auth.email}
+                  isGoogleLinked={!!state.auth.googleId}
+                  sharePresence={state.settings?.sharePresence !== false}
+                  onSetSharePresence={setSharePresence}
+                  onChangePassword={changePassword}
+                  onSetLocalPassword={setLocalPassword}
+                  onUnlinkGoogle={unlinkGoogleAccount}
+                  hasLocalPassword={!!state.localAccounts?.[(state.auth.email || "").toLowerCase()]}
+                />
               )}
             </div>
 
@@ -4304,7 +4563,10 @@ function RankUpStyles() {
       .ghost-btn{ display:inline-flex; align-items:center; gap:6px; background:var(--card); border:1px solid var(--border); color:var(--ink-0); border-radius:10px; padding:7px 11px; font-size:12px; font-weight:600; cursor:pointer; }
       .ghost-btn.full{ width:100%; justify-content:center; margin-top:6px; }
       .danger-btn.full{ width:100%; display:flex; align-items:center; justify-content:center; gap:7px; background:transparent; border:1px solid var(--warn); color:var(--warn); border-radius:12px; padding:11px; font-weight:700; font-size:13.5px; cursor:pointer; margin-top:8px; }
+      .danger-btn{ display:inline-flex; align-items:center; gap:6px; background:transparent; border:1px solid var(--warn); color:var(--warn); border-radius:10px; padding:7px 11px; font-size:12px; font-weight:700; cursor:pointer; }
       .link-btn{ background:none; border:none; color:var(--blue-soft); font-weight:600; font-size:12.5px; cursor:pointer; padding:0; }
+      .inline-form{ display:flex; flex-direction:column; gap:8px; padding:10px 0 12px; border-bottom:1px solid var(--border); }
+      .success-line{ display:flex; align-items:center; gap:6px; color:var(--good); font-size:12px; margin-top:2px; }
 
       .activity-row{ display:flex; gap:9px; align-items:flex-start; padding:9px 0; border-bottom:1px solid var(--border); color:var(--ink-1); }
       .activity-row svg{ margin-top:2px; color:var(--ink-3); flex-shrink:0; }
