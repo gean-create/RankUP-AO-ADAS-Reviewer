@@ -160,7 +160,14 @@ async function callClaude(userPrompt, systemPrompt) {
       messages: [{ role: "user", content: userPrompt }],
     }),
   });
-  if (!response.ok) throw new Error("AI request failed (" + response.status + ")");
+  if (!response.ok) {
+    let detail = "status " + response.status;
+    try {
+      const errBody = await response.json();
+      detail = errBody.error || errBody.message || (errBody.error && errBody.error.message) || detail;
+    } catch (e) { /* body wasn't JSON — keep the status-only detail */ }
+    throw new Error(detail);
+  }
   const data = await response.json();
   const text = (data.content || [])
     .map((block) => (block.type === "text" ? block.text : ""))
@@ -248,7 +255,14 @@ async function callClaudeWithFile(fileBlock, instruction, systemPrompt) {
       messages: [{ role: "user", content: [fileBlock, { type: "text", text: instruction }] }],
     }),
   });
-  if (!response.ok) throw new Error("AI request failed (" + response.status + ")");
+  if (!response.ok) {
+    let detail = "status " + response.status;
+    try {
+      const errBody = await response.json();
+      detail = errBody.error || errBody.message || (errBody.error && errBody.error.message) || detail;
+    } catch (e) { /* body wasn't JSON — keep the status-only detail */ }
+    throw new Error(detail);
+  }
   const data = await response.json();
   const text = (data.content || [])
     .map((block) => (block.type === "text" ? block.text : ""))
@@ -2749,7 +2763,8 @@ function PracticeAnswer({ question, kind, position, pdsInfo, wesInfo, onLogHisto
       setResult(fb);
       onLogHistory({ question, answer, score: fb.score, feedback: fb.feedback, kind });
     } catch (e) {
-      setError("Couldn't reach the AI reviewer right now. Please try again in a moment.");
+      console.error("AI feedback failed:", e);
+      setError("Couldn't reach the AI reviewer right now (" + (e && e.message ? e.message : "unknown error") + "). Please try again in a moment.");
     } finally {
       setLoading(false);
     }
@@ -2761,7 +2776,8 @@ function PracticeAnswer({ question, kind, position, pdsInfo, wesInfo, onLogHisto
       const ans = await getPersonalizedAnswer(question, position, pdsInfo, wesInfo);
       setPersonalized(ans);
     } catch (e) {
-      setError("Couldn't generate a personalized answer right now. Please try again.");
+      console.error("AI personalize failed:", e);
+      setError("Couldn't generate a personalized answer right now (" + (e && e.message ? e.message : "unknown error") + "). Please try again.");
     } finally {
       setPersonalizing(false);
     }
