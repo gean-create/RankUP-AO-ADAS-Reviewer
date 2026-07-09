@@ -1,21 +1,55 @@
 // api/claude-proxy.js
 //
 // This runs on Vercel's servers, never in the visitor's browser, so it's the
-// one place allowed to hold your real Anthropic API key.
+// one place allowed to hold your API key.
 //
-// SETUP (one time):
-//   1. Make sure this file lives at api/claude-proxy.js in your project root
-//      (Vercel auto-detects anything under /api as a serverless function —
-//      no vercel.json or extra config needed).
+// This proxy talks to Google's Gemini API, which has a genuinely free tier
+// (no credit card required, unlike Anthropic's API). It accepts requests in
+// the same shape App.jsx already sends (an Anthropic-style body), translates
+// them to Gemini's format behind the scenes, and translates the response
+// back — so App.jsx itself needed no changes.
+//
+// SETUP (one time, free):
+//   1. Go to https://aistudio.google.com/apikey and sign in with any Google
+//      account. Click "Create API key". No credit card, no billing needed.
 //   2. In the Vercel dashboard: your project -> Settings -> Environment
-//      Variables -> Add: key = ANTHROPIC_API_KEY, value = your key from
-//      https://console.anthropic.com/settings/keys. Apply it to
-//      Production (and Preview, if you test on preview deploys).
+//      Variables -> Add: key = GEMINI_API_KEY, value = the key you just
+//      copied. Apply it to Production (and Preview, if you test there too).
 //   3. Redeploy (Vercel picks up new env vars on the next deploy — a plain
 //      "Redeploy" from the dashboard is enough).
 //
-// That's it — App.jsx already points CLAUDE_API_ENDPOINT at
-// "/api/claude-proxy", so no further code changes are needed.
+// Free tier limits (subject to Google changing them): roughly 10-15
+// requests/minute and 250-1000+ requests/day on the Flash models used here —
+// comfortably enough for a personal review app used by one or a few people.
+// If you ever outgrow it, add billing on the same Google Cloud project and
+// nothing else here needs to change.
+
+const GEMINI_MODEL = "gemini-2.5-flash";
+
+function anthropicContentToGeminiParts(content) {
+  // App.jsx sends either a plain string, or (for file uploads) an array of
+  // Anthropic-style content blocks: {type:"text", text} / {type:"image",
+  // source:{media_type, data}} / {type:"document", source:{media_type, data}}.
+  if (typeof content === "string") {
+    return [{ text: content }];
+  }
+  if (!Array.isArray(content)) return [{ text: String(content || "") }];
+
+  return content.map((block) => {
+    if (block.type === "text") {
+      return { text: block.text || "" };
+    }
+    if ((block.type === "image" || block.type === "document") && block.source && block.source.data) {
+      return {
+        inline_data: {
+          mime_type: block.source.media_type || "application/octet-stream",
+          data: block.source.data,
+        },
+      };
+    }
+    return { text: "" };
+  });
+}
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -23,38 +57,68 @@ export default async function handler(req, res) {
     return;
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     res.status(500).json({
-      error: "Server is missing ANTHROPIC_API_KEY. Add it in Vercel Project settings -> Environment Variables, then redeploy.",
+      error: "Server is missing GEMINI_API_KEY. Get a free key at https://aistudio.google.com/apikey, add it in Vercel Project settings -> Environment Variables, then redeploy.",
     });
     return;
   }
 
   try {
-    const upstream = await fetch("https://api.anthropic.com/v1/messages", {
+    const body = req.body || {};
+    const maxTokens = body.max_tokens || 1000;
+    const systemText = body.system || "";
+    const firstMessage = (body.messages && body.messages[0]) || {};
+    const parts = anthropicContentToGeminiParts(firstMessage.content);
+
+    const geminiBody = {
+      contents: [{ role: "user", parts }],
+      generationConfig: { maxOutputTokens: maxTokens },
+    };
+    if (systemText) {
+      geminiBody.system_instruction = { parts: [{ text: systemText }] };
+    }
+
+    const url =
+      "https://generativelanguage.googleapis.com/v1beta/models/" +
+      GEMINI_MODEL + ":generateContent?key=" + apiKey;
+
+    const upstream = await fetch(url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify(req.body),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(geminiBody),
     });
 
-    const data = await upstream.text();
+    const raw = await upstream.text();
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (e) {
+      res.status(502).json({ error: "Gemini returned a non-JSON response (status " + upstream.status + ")." });
+      return;
+    }
+
     if (!upstream.ok) {
-      // Anthropic returns errors as {"type":"error","error":{"type":"...","message":"..."}}.
-      // Normalize to a plain string so the client never has to unwrap nested shapes.
-      let message = "Anthropic API error (status " + upstream.status + ")";
-      try {
-        const parsed = JSON.parse(data);
-        if (parsed && parsed.error && parsed.error.message) message = parsed.error.message;
-      } catch (e) { /* not JSON — keep the status-only message */ }
+      const message = (parsed && parsed.error && parsed.error.message) || ("Gemini API error (status " + upstream.status + ")");
       res.status(upstream.status).json({ error: message });
       return;
     }
-    res.status(upstream.status).setHeader("Content-Type", "application/json").send(data);
+
+    const candidate = parsed.candidates && parsed.candidates[0];
+    const finishReason = candidate && candidate.finishReason;
+    const textParts = (candidate && candidate.content && candidate.content.parts) || [];
+    const text = textParts.map((p) => p.text || "").join("").trim();
+
+    if (!text) {
+      const reasonNote = finishReason ? (" (finishReason: " + finishReason + ")") : "";
+      res.status(502).json({ error: "Gemini returned an empty response" + reasonNote + "." });
+      return;
+    }
+
+    // Re-shape into the Anthropic Messages format App.jsx already expects,
+    // so no client-side parsing changes are needed.
+    res.status(200).json({ content: [{ type: "text", text }] });
   } catch (err) {
     res.status(502).json({ error: "Could not reach the AI service: " + err.message });
   }
