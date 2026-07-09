@@ -1,66 +1,50 @@
-// Netlify serverless function: proxies requests to the Anthropic API.
+// api/claude-proxy.js
 //
-// Why this exists: RankUp's AI features (personalized answers, AI-scored
-// practice feedback, PDS/WES reading) call the Claude API from the browser.
-// Inside Claude.ai's artifact runtime, that works because Claude injects the
-// necessary auth for you. Once you deploy this app on your own domain
-// (Netlify, GitHub Pages, etc.), a public browser CANNOT call
-// api.anthropic.com directly — there's no key, and Anthropic's API doesn't
-// allow browser-to-API calls with a bare key exposed in client code anyway.
+// This runs on Vercel's servers, never in the visitor's browser, so it's the
+// one place allowed to hold your real Anthropic API key.
 //
-// This function sits between your app and Anthropic: your app calls
-// "/.netlify/functions/claude-proxy" (same shape as the real API), Netlify
-// runs this function server-side using your secret API key (stored as an
-// environment variable, never shipped to the browser), and forwards the
-// response back.
+// SETUP (one time):
+//   1. Make sure this file lives at api/claude-proxy.js in your project root
+//      (Vercel auto-detects anything under /api as a serverless function —
+//      no vercel.json or extra config needed).
+//   2. In the Vercel dashboard: your project -> Settings -> Environment
+//      Variables -> Add: key = ANTHROPIC_API_KEY, value = your key from
+//      https://console.anthropic.com/settings/keys. Apply it to
+//      Production (and Preview, if you test on preview deploys).
+//   3. Redeploy (Vercel picks up new env vars on the next deploy — a plain
+//      "Redeploy" from the dashboard is enough).
 //
-// SETUP:
-// 1. Get an API key from https://console.anthropic.com/settings/keys
-// 2. In Netlify: Site settings -> Environment variables -> add
-//      ANTHROPIC_API_KEY = sk-ant-...your-key...
-// 3. In rankup-app.jsx, change:
-//      const CLAUDE_API_ENDPOINT = "https://api.anthropic.com/v1/messages";
-//    to:
-//      const CLAUDE_API_ENDPOINT = "/.netlify/functions/claude-proxy";
-// 4. Deploy. That's it — this file is picked up automatically because it
-//    lives in netlify/functions/.
+// That's it — App.jsx already points CLAUDE_API_ENDPOINT at
+// "/api/claude-proxy", so no further code changes are needed.
 
-exports.handler = async function (event) {
-  if (event.httpMethod !== "POST") {
-    return { statusCode: 405, body: "Method Not Allowed" };
+export default async function handler(req, res) {
+  if (req.method !== "POST") {
+    res.status(405).json({ error: "Method Not Allowed" });
+    return;
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    return {
-      statusCode: 500,
-      body: JSON.stringify({
-        error: "Server is missing ANTHROPIC_API_KEY. Add it in Netlify: Site settings -> Environment variables.",
-      }),
-    };
+    res.status(500).json({
+      error: "Server is missing ANTHROPIC_API_KEY. Add it in Vercel Project settings -> Environment Variables, then redeploy.",
+    });
+    return;
   }
 
   try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
+    const upstream = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "x-api-key": apiKey,
         "anthropic-version": "2023-06-01",
       },
-      body: event.body,
+      body: JSON.stringify(req.body),
     });
 
-    const data = await response.text();
-    return {
-      statusCode: response.status,
-      headers: { "Content-Type": "application/json" },
-      body: data,
-    };
+    const data = await upstream.text();
+    res.status(upstream.status).setHeader("Content-Type", "application/json").send(data);
   } catch (err) {
-    return {
-      statusCode: 502,
-      body: JSON.stringify({ error: "Could not reach Anthropic API: " + err.message }),
-    };
+    res.status(502).json({ error: "Could not reach the AI service: " + err.message });
   }
-};
+}
