@@ -47,19 +47,14 @@ const localStorageShim = {
 };
 const storage = (typeof window !== "undefined" && window.storage) ? window.storage : localStorageShim;
 
-/* Claude API endpoint. Browsers can NEVER call api.anthropic.com directly —
-   there is no way to attach a secret API key to client-side code without
-   exposing it to every visitor, and Anthropic blocks that request anyway.
-   This is why "AI Feedback" / "Personalize" only work inside a Claude.ai
-   Artifact preview (which quietly proxies the call for you) and fail on any
-   other host, including this file once you download and deploy it.
-   The fix: route through a tiny serverless function that holds the real key
-   server-side. This app is deployed on Vercel, so the ready-to-use function
-   is at api/claude-proxy.js (Vercel auto-detects anything in /api as a
-   serverless function — no extra config needed). Set the ANTHROPIC_API_KEY
-   environment variable in the Vercel dashboard (Project -> Settings ->
-   Environment Variables), then redeploy, and the path below starts working
-   with no other code changes. */
+/* AI endpoint. Browsers can NEVER call a paid LLM API directly — there is
+   no way to attach a secret key to client-side code without exposing it to
+   every visitor. The fix: route through a tiny serverless function that
+   holds the real key server-side — see api/claude-proxy.js. That function
+   talks to Google's Gemini API (free tier, no credit card needed) and
+   reshapes the response so nothing in this file needs to change. Get a
+   free key at https://aistudio.google.com/apikey, add it in Vercel as the
+   GEMINI_API_KEY environment variable, then redeploy. */
 const CLAUDE_API_ENDPOINT = "/api/claude-proxy";
 
 const defaultState = {
