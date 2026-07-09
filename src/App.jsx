@@ -54,15 +54,13 @@ const storage = (typeof window !== "undefined" && window.storage) ? window.stora
    Artifact preview (which quietly proxies the call for you) and fail on any
    other host, including this file once you download and deploy it.
    The fix: route through a tiny serverless function that holds the real key
-   server-side. A ready-to-deploy Netlify version is included at
-   netlify/functions/claude-proxy.js — deploy this app to Netlify, set the
-   ANTHROPIC_API_KEY environment variable in the Netlify dashboard, and the
-   path below will start working with no other code changes. If you deploy
-   elsewhere (Vercel, your own Node server, etc.), write an equivalent
-   endpoint that accepts the same POST body and forwards it to
-   https://api.anthropic.com/v1/messages with your server-side key, then
-   update this path to match. */
-const CLAUDE_API_ENDPOINT = "/.netlify/functions/claude-proxy";
+   server-side. This app is deployed on Vercel, so the ready-to-use function
+   is at api/claude-proxy.js (Vercel auto-detects anything in /api as a
+   serverless function — no extra config needed). Set the ANTHROPIC_API_KEY
+   environment variable in the Vercel dashboard (Project -> Settings ->
+   Environment Variables), then redeploy, and the path below starts working
+   with no other code changes. */
+const CLAUDE_API_ENDPOINT = "/api/claude-proxy";
 
 const defaultState = {
   auth: null, // { name, email, googleId?, picture? }  (no password here — see localAccounts)
