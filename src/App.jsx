@@ -47,19 +47,14 @@ const localStorageShim = {
 };
 const storage = (typeof window !== "undefined" && window.storage) ? window.storage : localStorageShim;
 
-/* Claude API endpoint. Browsers can NEVER call api.anthropic.com directly —
-   there is no way to attach a secret API key to client-side code without
-   exposing it to every visitor, and Anthropic blocks that request anyway.
-   This is why "AI Feedback" / "Personalize" only work inside a Claude.ai
-   Artifact preview (which quietly proxies the call for you) and fail on any
-   other host, including this file once you download and deploy it.
-   The fix: route through a tiny serverless function that holds the real key
-   server-side. This app is deployed on Vercel, so the ready-to-use function
-   is at api/claude-proxy.js (Vercel auto-detects anything in /api as a
-   serverless function — no extra config needed). Set the ANTHROPIC_API_KEY
-   environment variable in the Vercel dashboard (Project -> Settings ->
-   Environment Variables), then redeploy, and the path below starts working
-   with no other code changes. */
+/* AI endpoint. Browsers can NEVER call a paid LLM API directly — there is
+   no way to attach a secret key to client-side code without exposing it to
+   every visitor. The fix: route through a tiny serverless function that
+   holds the real key server-side — see api/claude-proxy.js. That function
+   talks to Google's Gemini API (free tier, no credit card needed) and
+   reshapes the response so nothing in this file needs to change. Get a
+   free key at https://aistudio.google.com/apikey, add it in Vercel as the
+   GEMINI_API_KEY environment variable, then redeploy. */
 const CLAUDE_API_ENDPOINT = "/api/claude-proxy";
 
 const defaultState = {
@@ -164,7 +159,10 @@ async function callClaude(userPrompt, systemPrompt) {
     let detail = "status " + response.status;
     try {
       const errBody = await response.json();
-      detail = errBody.error || errBody.message || (errBody.error && errBody.error.message) || detail;
+      const rawErr = errBody.error;
+      detail = (rawErr && typeof rawErr === 'object' && rawErr.message)
+        ? rawErr.message
+        : (typeof rawErr === 'string' ? rawErr : (errBody.message || detail));
     } catch (e) { /* body wasn't JSON — keep the status-only detail */ }
     throw new Error(detail);
   }
@@ -178,28 +176,54 @@ async function callClaude(userPrompt, systemPrompt) {
   return text;
 }
 
+function extractJsonObject(text) {
+  // Strips markdown fences and any stray prose before/after the JSON object
+  // Gemini sometimes adds despite being told not to (e.g. "Here's the
+  // feedback:\n{...}"), then tries to parse just the {...} portion.
+  let t = text.replace(/```json|```/gi, "").trim();
+  const start = t.indexOf("{");
+  const end = t.lastIndexOf("}");
+  if (start !== -1 && end !== -1 && end > start) {
+    t = t.slice(start, end + 1);
+  }
+  return t;
+}
+
 async function getPracticeFeedback(question, answer, position) {
   const system =
     "You are acting as an experienced HR Officer, Interview Panel Member, and Written " +
     "Examination Reviewer for the Philippine civil service. You are evaluating a practice " +
     "answer from a candidate applying for a " + position + " position. " +
-    "Respond with STRICT JSON ONLY, no markdown fences, no preamble, in this exact shape: " +
+    "Respond with STRICT JSON ONLY, no markdown fences, no preamble, no text before or after " +
+    "the object, in this exact shape: " +
     '{"score": <integer 0-100>, "feedback": "<3-5 sentences>"}. ' +
     "The feedback must be a single flowing paragraph — do NOT break it into labeled categories " +
     "like Relevance, Grammar, Confidence, Organization, or Communication. Just one holistic, " +
     "encouraging, constructive paragraph that names a genuine strength, one concrete area to " +
-    "improve, and one practical tip for next time. Be warm but honest, professional, human.";
+    "improve, and one practical tip for next time. Be warm but honest, professional, human. " +
+    "Keep the whole JSON object under 120 words total so it is never cut off.";
   const user = "Question:\n" + question + "\n\nCandidate's answer:\n" + answer;
   const raw = await callClaude(user, system);
-  const cleaned = raw.replace(/```json|```/g, "").trim();
   try {
-    const parsed = JSON.parse(cleaned);
+    const parsed = JSON.parse(extractJsonObject(raw));
+    const feedbackText = String(parsed.feedback || "").trim();
+    if (!feedbackText) throw new Error("empty feedback field");
     return {
       score: Math.max(0, Math.min(100, Math.round(Number(parsed.score) || 0))),
-      feedback: String(parsed.feedback || "").trim(),
+      feedback: feedbackText,
     };
   } catch (e) {
-    return { score: null, feedback: raw };
+    // Last resort: try to salvage just the feedback sentence with a regex
+    // instead of ever showing raw {"score":...} braces in the UI.
+    const m = raw.match(/"feedback"\s*:\s*"([^"]{20,})/);
+    if (m) {
+      const scoreMatch = raw.match(/"score"\s*:\s*(\d{1,3})/);
+      return {
+        score: scoreMatch ? Math.max(0, Math.min(100, parseInt(scoreMatch[1], 10))) : null,
+        feedback: m[1].trim(),
+      };
+    }
+    return { score: null, feedback: "The reviewer's response couldn't be read this time — please try again." };
   }
 }
 
@@ -259,7 +283,10 @@ async function callClaudeWithFile(fileBlock, instruction, systemPrompt) {
     let detail = "status " + response.status;
     try {
       const errBody = await response.json();
-      detail = errBody.error || errBody.message || (errBody.error && errBody.error.message) || detail;
+      const rawErr = errBody.error;
+      detail = (rawErr && typeof rawErr === 'object' && rawErr.message)
+        ? rawErr.message
+        : (typeof rawErr === 'string' ? rawErr : (errBody.message || detail));
     } catch (e) { /* body wasn't JSON — keep the status-only detail */ }
     throw new Error(detail);
   }
@@ -2814,7 +2841,9 @@ function PracticeAnswer({ question, kind, position, pdsInfo, wesInfo, onLogHisto
       {error && <div className="error-line"><AlertCircle size={13} /> {error}</div>}
       {result && (
         <div className="result-box">
-          <ScoreRing score={result.score} />
+          {result.score !== null && result.score !== undefined
+            ? <ScoreRing score={result.score} />
+            : <div className="score-ring score-ring-empty"><Sparkles size={18} /></div>}
           <div className="result-text">
             <div className="result-title">Overall Feedback</div>
             <p>{result.feedback}</p>
@@ -4662,6 +4691,7 @@ function RankUpStyles() {
       .result-box{ margin-top:11px; display:flex; gap:12px; align-items:center; background:var(--card-hi); border-radius:12px; padding:12px; }
       .score-ring{ position:relative; width:64px; height:64px; flex-shrink:0; }
       .score-ring-num{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:'Fraunces',serif; font-weight:700; font-size:15px; }
+      .score-ring-empty{ display:flex; align-items:center; justify-content:center; border-radius:50%; background:var(--surface-2); color:var(--ink-3); border:1px solid var(--border); }
       .result-title{ font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-2); font-weight:700; margin-bottom:3px; }
       .result-text p{ font-size:12.5px; margin:0; line-height:1.55; color:var(--ink-1); }
       .error-line{ display:flex; align-items:center; gap:6px; color:var(--warn); font-size:12px; margin-top:8px; }
