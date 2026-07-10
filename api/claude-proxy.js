@@ -24,7 +24,12 @@
 // If you ever outgrow it, add billing on the same Google Cloud project and
 // nothing else here needs to change.
 
-const GEMINI_MODEL = "gemini-2.5-flash";
+// Google renames/retires free-tier models more often than you'd like. Try
+// these in order — first one that actually answers wins. If Google shuffles
+// the lineup again, add the new model name to the front of this list rather
+// than replacing it, so older keys/projects still fall through to one that
+// works for them.
+const GEMINI_MODELS = ["gemini-3.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-flash-latest"];
 
 function anthropicContentToGeminiParts(content) {
   // App.jsx sends either a plain string, or (for file uploads) an array of
@@ -80,28 +85,43 @@ export default async function handler(req, res) {
       geminiBody.system_instruction = { parts: [{ text: systemText }] };
     }
 
-    const url =
-      "https://generativelanguage.googleapis.com/v1beta/models/" +
-      GEMINI_MODEL + ":generateContent?key=" + apiKey;
+    let parsed = null;
+    let lastError = null;
+    let lastStatus = 502;
 
-    const upstream = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(geminiBody),
-    });
+    for (const model of GEMINI_MODELS) {
+      const url =
+        "https://generativelanguage.googleapis.com/v1beta/models/" +
+        model + ":generateContent?key=" + apiKey;
 
-    const raw = await upstream.text();
-    let parsed;
-    try {
-      parsed = JSON.parse(raw);
-    } catch (e) {
-      res.status(502).json({ error: "Gemini returned a non-JSON response (status " + upstream.status + ")." });
-      return;
+      const upstream = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(geminiBody),
+      });
+
+      const raw = await upstream.text();
+      let parsedBody;
+      try { parsedBody = JSON.parse(raw); } catch (e) { parsedBody = null; }
+
+      if (upstream.ok && parsedBody) {
+        parsed = parsedBody;
+        break; // this model worked — stop trying the rest
+      }
+
+      lastStatus = upstream.status;
+      lastError = (parsedBody && parsedBody.error && parsedBody.error.message) || ("Gemini API error (status " + upstream.status + ")");
+
+      // Only keep falling through the list for "this model doesn't exist /
+      // isn't available to you" style errors. Anything else (bad key,
+      // content blocked, quota) is the same for every model, so stop and
+      // report it immediately instead of burning through the whole list.
+      const isModelIssue = upstream.status === 404 || /no longer available|not found|not supported/i.test(lastError);
+      if (!isModelIssue) break;
     }
 
-    if (!upstream.ok) {
-      const message = (parsed && parsed.error && parsed.error.message) || ("Gemini API error (status " + upstream.status + ")");
-      res.status(upstream.status).json({ error: message });
+    if (!parsed) {
+      res.status(lastStatus).json({ error: lastError || "All AI models are currently unavailable." });
       return;
     }
 
